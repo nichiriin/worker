@@ -69,19 +69,16 @@ jobs:
             "$RUNNER_TEMP/gluetun.env" \
             "$RUNNER_TEMP/teldrive.env"
 
-          # Run worker for up to 2 hours
           set +e
-          timeout 2h docker logs -f worker
+          exit_code=$(timeout 2h docker wait stash-worker)
           status=$?
           set -e
 
           if [ "$status" -eq 124 ]; then
-            echo "2-hour runtime reached"
-            docker stop -t 20 worker
+            echo "2-hour runtime reached, stopping worker"
+            docker stop -t 20 stash-worker >/dev/null
           elif [ "$status" -ne 0 ]; then
             exit "$status"
           else
-            exit_code=$(docker inspect \
-              --format '{{.State.ExitCode}}' worker)
             exit "$exit_code"
           fi
