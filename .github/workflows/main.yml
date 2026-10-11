@@ -72,13 +72,13 @@ jobs:
             "$RUNNER_TEMP/teldrive.env"
 
           set +e
-          exit_code=$(timeout 2h docker wait stash-worker)
+          exit_code=$(timeout 2h docker wait worker)
           status=$?
           set -e
 
           if [ "$status" -eq 124 ]; then
             echo "2-hour runtime reached, stopping worker"
-            docker stop -t 20 stash-worker >/dev/null
+            docker stop -t 20 worker >/dev/null
           elif [ "$status" -ne 0 ]; then
             exit "$status"
           else
