@@ -3,8 +3,8 @@ name: worker
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '17 */2 * * *'
+  # schedule:
+  #   - cron: '17 */2 * * *'
 
 concurrency:
   group: worker
