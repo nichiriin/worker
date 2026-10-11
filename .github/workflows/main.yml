@@ -6,6 +6,10 @@ on:
   schedule:
     - cron: '17 */2 * * *'
 
+concurrency:
+  group: worker
+  cancel-in-progress: false
+
 jobs:
   deploy-worker:
     runs-on: ubuntu-latest
