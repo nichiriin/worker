@@ -1,0 +1,87 @@
+
+name: worker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 140
+
+    steps:
+      - name: Run worker
+        env:
+          WORKER_ENV: ${{ secrets.WORKER_ENV_FILE }}
+          GLUETUN_ENV: ${{ secrets.GLUETUN_ENV_FILE }}
+          TELDRIVE_ENV: ${{ secrets.TELDRIVE_ENV_FILE }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          # Environment files
+          printf '%s' "$WORKER_ENV" > "$RUNNER_TEMP/worker.env"
+          printf '%s' "$GLUETUN_ENV" > "$RUNNER_TEMP/gluetun.env"
+          printf '%s' "$TELDRIVE_ENV" > "$RUNNER_TEMP/teldrive.env"
+
+          # Cleanup
+          cleanup() {
+            docker rm -f worker teldrive gluetun 2>/dev/null || true
+            docker network rm svc 2>/dev/null || true
+            rm -f \
+              "$RUNNER_TEMP/worker.env" \
+              "$RUNNER_TEMP/gluetun.env" \
+              "$RUNNER_TEMP/teldrive.env"
+          }
+          trap cleanup EXIT
+
+          docker network create svc
+          sudo install -d -o 1000 -g 100 -m 775 /downloads
+          df -h /downloads
+
+          docker run -d \
+            --name gluetun \
+            --hostname gluetun \
+            --network svc \
+            --cap-add NET_ADMIN \
+            --device /dev/net/tun \
+            --env-file "$RUNNER_TEMP/gluetun.env" \
+            -v gluetun-data:/gluetun \
+            docker.io/qmcgaw/gluetun:latest
+
+          docker run -d \
+            --name teldrive \
+            --hostname teldrive \
+            --network svc \
+            --env-file "$RUNNER_TEMP/teldrive.env" \
+            ghcr.io/tgdrive/teldrive:2
+
+          docker run -d \
+            --name worker \
+            --hostname worker \
+            --network svc \
+            --env-file "$RUNNER_TEMP/worker.env" \
+            --mount type=bind,source=/downloads,target=/downloads \
+            ghcr.io/elevatedai/stash:latest worker
+
+          rm -f \
+            "$RUNNER_TEMP/worker.env" \
+            "$RUNNER_TEMP/gluetun.env" \
+            "$RUNNER_TEMP/teldrive.env"
+
+          # Run worker for up to 2 hours
+          set +e
+          timeout 2h docker logs -f worker
+          status=$?
+          set -e
+
+          if [ "$status" -eq 124 ]; then
+            echo "2-hour runtime reached"
+            docker stop -t 20 worker
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          else
+            exit_code=$(docker inspect \
+              --format '{{.State.ExitCode}}' worker)
+            exit "$exit_code"
+          fi
